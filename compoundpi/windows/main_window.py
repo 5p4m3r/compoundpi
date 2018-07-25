@@ -240,9 +240,9 @@ The project homepage and documentation is at
                 self.settings.setValue('port', dialog.port)
                 self.settings.setValue('timeout', dialog.timeout)
                 self.settings.setValue('expected_count', dialog.expected_count)
-                self.client.network = '%s/%s' % (iface['addr'], iface['netmask'])
-                self.client.port = dialog.port
-                self.client.timeout = dialog.timeout
+                self.client.servers.network = '%s/%s' % (iface['addr'], iface['netmask'])
+                self.client.servers.port = dialog.port
+                self.client.servers.timeout = dialog.timeout
                 self.ui.server_list.model().find(count=dialog.expected_count)
                 self.servers_resize_columns()
         finally:
