@@ -50,11 +50,15 @@ base class. The extra facilities provided are:
 import os
 import re
 import cmd
-import readline
 import locale
 import logging
 import warnings
 from textwrap import TextWrapper
+
+try:
+  import readline
+except ImportError:
+  import pyreadline as readline
 
 from .terminal import _CONSOLE
 
