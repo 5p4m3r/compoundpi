@@ -45,7 +45,7 @@ from .ipaddress import IPv4Address, IPv4Network
 from .client import CompoundPiClient
 from .terminal import TerminalApplication
 from .cmdline import Cmd, CmdSyntaxError, CmdError, ENCODING
-from .exc import CompoundPiClientError
+from .exc import CompoundPiError
 
 
 def service(s):
@@ -256,6 +256,22 @@ class CompoundPiProgress(object):
         self.count = 0
         self.output = None
 
+class SilentCompoundPiProgress(object):
+    def __init__(self, stdout):
+        self.stdout = stdout
+        self.count = 0
+
+    def start(self, count):
+        self.count = count
+        self.stdout.write('Starting {} commands\n'.format(count).encode(ENCODING))
+
+    def update(self, count):
+        pass
+
+    def finish(self):
+        self.count = 0
+        self.output = None
+        self.stdout.write('Done\n'.encode(ENCODING))
 
 class CompoundPiCmd(Cmd):
     prompt = 'cpi> '
@@ -266,7 +282,8 @@ class CompoundPiCmd(Cmd):
         self.pprint(
             'Type "help" for more information, '
             'or "find" to locate Pi servers')
-        self.client = CompoundPiClient(CompoundPiProgress(self.stdout))
+#        self.client = CompoundPiClient(CompoundPiProgress(self.stdout))
+        self.client = CompoundPiClient(SilentCompoundPiProgress(self.stdout))
         self.capture_delay = 0.0
         self.capture_count = 1
         self.capture_quality = 85
@@ -299,7 +316,7 @@ class CompoundPiCmd(Cmd):
         # Don't crash'n'burn for standard client errors
         try:
             return Cmd.onecmd(self, line)
-        except CompoundPiClientError as exc:
+        except CompoundPiError as exc:
             self.pprint(str(exc) + '\n')
 
     def parse_address(self, s):
@@ -1605,9 +1622,13 @@ class CompoundPiCmd(Cmd):
                             'MOTION': 'motion',
                             }[f.filetype])
                 with io.open(os.path.join(self.output, filename), 'wb') as output:
-                    self.client.download(address, f.index, output)
-                    if output.tell() != f.size:
-                        raise CmdError('Wrong size for file %s' % filename)
+                    try:
+                        # TODO: capture errors
+                        self.client.download(address, f.index, output)
+                        if output.tell() != f.size:
+                            raise CmdError('Wrong size for file %s' % filename)
+                    except Exception as e:
+                        logging.warning(str(e))
                 logging.info('Downloaded %s' % filename)
         self.client.clear(self.parse_addresses(arg))
 
