@@ -269,6 +269,7 @@ class Cmd(cmd.Cmd):
             self._wrapper.width = self.width
             self._wrapper.initial_indent = initial_indent
             self._wrapper.subsequent_indent = subsequent_indent
+            self._wrapper.replace_whitespace = False
             s = self._wrapper.fill(s)
         return s + suffix
 

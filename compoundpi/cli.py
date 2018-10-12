@@ -42,7 +42,7 @@ import time
 
 from . import __version__
 from .ipaddress import IPv4Address, IPv4Network
-from .client import CompoundPiClient
+from .client import CompoundPiClient, CompoundPiErrorValue
 from .terminal import TerminalApplication
 from .cmdline import Cmd, CmdSyntaxError, CmdError, ENCODING
 from .exc import CompoundPiError
@@ -317,7 +317,7 @@ class CompoundPiCmd(Cmd):
         try:
             return Cmd.onecmd(self, line)
         except CompoundPiError as exc:
-            self.pprint(str(exc) + '\n')
+            self.stdout.write((str(exc) + '\n').encode(ENCODING))
 
     def parse_address(self, s):
         try:
@@ -728,7 +728,9 @@ class CompoundPiCmd(Cmd):
 
         cpi> status
         """
-        responses = self.client.status(self.parse_addresses(arg))
+        all_responses = self.client.status(self.parse_addresses(arg))
+        invalid_responses = {address: response for address, response in all_responses.items() if isinstance(response, CompoundPiErrorValue)}
+        responses = {address: response for address, response in all_responses.items() if not isinstance(response, CompoundPiErrorValue)}
         min_time = min(status.timestamp for status in responses.values())
         self.pprint_table(
             [
@@ -779,6 +781,8 @@ class CompoundPiCmd(Cmd):
                 if address in responses
                 for status in (responses[address],)
                 ])
+        if invalid_responses:
+            logging.warning('{} invalid responses:\n{}'.format(len(invalid_responses), '\n'.join([str(e) for e in invalid_responses.values()])))
         if len(set(
                 status.resolution
                 for status in responses.values()

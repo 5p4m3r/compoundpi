@@ -99,6 +99,13 @@ class Resolution(namedtuple('Resolution', ('width', 'height'))):
     def __str__(self):
         return '%dx%d' % (self.width, self.height)
 
+class CompoundPiErrorValue(object):
+    def __init__(self, error=None):
+        self.error = error
+        super(CompoundPiErrorValue, self).__init__()
+
+    def __str__(self):
+        return str(self.error)
 
 class CompoundPiStatus(namedtuple('CompoundPiStatus', (
     'resolution',
@@ -780,6 +787,41 @@ class CompoundPiServerList(object):
             raise CompoundPiTransactionFailed(errors)
         return responses
 
+    def transact_return_errors(self, data, addresses=None):
+        if addresses is None:
+            if not self._items:
+                raise CompoundPiNoServers()
+            addresses = set(self._items)
+        else:
+            addresses = set(
+                addr if isinstance(addr, IPv4Address) else IPv4Address(addr)
+                for addr in addresses
+            )
+            if addresses - set(self._items):
+                raise CompoundPiUndefinedServers(addresses - set(self._items))
+        self._seqno += 1
+        data = '%d %s' % (self._seqno, data)
+        if addresses == set(self._items):
+            self._send_command(
+                (str(self.network.broadcast_address), self.port), self._seqno, data)
+        else:
+            for address in addresses:
+                self._send_command(
+                    (str(address), self.port), self._seqno, data)
+        responses = self._responses(addresses)
+        for address in addresses:
+            try:
+                result, response = responses[address]
+            except KeyError:
+                responses[address] = CompoundPiMissingResponse(address)
+            else:
+                responses[address] = response
+                if result == 'ERROR':
+                    responses[address] = CompoundPiServerError(address, response)
+                elif result != 'OK':
+                    responses[address] = CompoundPiInvalidResponse(address, response)
+        return responses
+
 
 class CompoundPiProgressHandler(object):
     """
@@ -1020,16 +1062,21 @@ class CompoundPiClient(object):
                         status.resolution.height,
                         ))
         """
+        def check_or_error(data, check):
+            if isinstance(data, CompoundPiServerError):
+                return data
+            return check(data)
         responses = [
-            (address, self.status_re.match(data))
-            for (address, data) in self.servers.transact(
+            (address, check_or_error(data, self.status_re.match))
+            for (address, data) in self.servers.transact_return_errors(
                 self._protocol.do_status(), addresses).items()
             ]
-        errors = []
         result = {}
         for address, match in responses:
             if match is None:
-                errors.append(CompoundPiInvalidResponse(address))
+                result[address] = CompoundPiErrorValue(CompoundPiInvalidResponse(address))
+            elif isinstance(match, CompoundPiServerError):
+                result[address] = CompoundPiErrorValue(match)
             else:
                 result[address] = CompoundPiStatus(
                     resolution=Resolution(int(match.group('width')), int(match.group('height'))),
@@ -1054,9 +1101,6 @@ class CompoundPiClient(object):
                     timestamp=datetime.datetime.fromtimestamp(float(match.group('time'))),
                     files=int(match.group('files')),
                     )
-        if errors:
-            raise CompoundPiTransactionFailed(
-                errors, '%d invalid status responses' % len(errors))
         return result
 
     def resolution(self, width, height, addresses=None):
