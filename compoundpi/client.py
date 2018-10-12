@@ -1443,31 +1443,34 @@ class CompoundPiClient(object):
                     )
                 print('%d bytes available for download' % size)
         """
+        def check_or_error(data, check):
+            if isinstance(data, CompoundPiServerError):
+                return data
+            return check(data)
         responses = {
-            address: [
+            address: check_or_error(data, lambda data: [
                 self.list_line_re.match(line)
                 for line in (data or '').splitlines()
-                ]
-            for (address, data) in self.servers.transact(
+            ])
+            for (address, data) in self.servers.transact_return_errors(
                 self._protocol.do_list(), addresses).items()
             }
-        errors = []
         result = {}
         for address, matches in responses.items():
             result[address] = []
-            for match in matches:
-                if match is None:
-                    errors.append(CompoundPiInvalidResponse(address))
-                else:
-                    result[address].append(CompoundPiFile(
-                        match.group('filetype'),
-                        int(match.group('index')),
-                        datetime.datetime.fromtimestamp(float(match.group('time'))),
-                        int(match.group('size')),
-                        ))
-        if errors:
-            raise CompoundPiTransactionFailed(
-                errors, '%d invalid lines in responses' % len(errors))
+            if isinstance(matches, CompoundPiServerError):
+                result[address] = CompoundPiErrorValue(matches)
+            else:
+                for match in matches:
+                    if match is None:
+                        result[address] = CompoundPiErrorValue(CompoundPiInvalidResponse(address))
+                    else:
+                        result[address].append(CompoundPiFile(
+                            match.group('filetype'),
+                            int(match.group('index')),
+                            datetime.datetime.fromtimestamp(float(match.group('time'))),
+                            int(match.group('size')),
+                            ))
         return result
 
     def clear(self, addresses=None):

@@ -1618,6 +1618,9 @@ class CompoundPiCmd(Cmd):
         """
         responses = self.client.list(self.parse_addresses(arg))
         for (address, files) in responses.items():
+            if isinstance(files, CompoundPiErrorValue):
+                logging.warning('Skipping {}'.format(files))
+                continue
             for f in files:
                 filename = '{ts:%Y%m%d-%H%M%S%f}-{addr}.{ext}'.format(
                         ts=f.timestamp, addr=address, ext={
@@ -1634,7 +1637,7 @@ class CompoundPiCmd(Cmd):
                     except Exception as e:
                         logging.warning(str(e))
                 logging.info('Downloaded %s' % filename)
-        self.client.clear(self.parse_addresses(arg))
+            self.client.clear([address])
 
     def complete_download(self, text, line, start, finish):
         return self.complete_server(text, line, start, finish)
