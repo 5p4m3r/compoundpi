@@ -42,10 +42,10 @@ import time
 
 from . import __version__
 from .ipaddress import IPv4Address, IPv4Network
-from .client import CompoundPiClient
+from .client import CompoundPiClient, CompoundPiErrorValue
 from .terminal import TerminalApplication
 from .cmdline import Cmd, CmdSyntaxError, CmdError, ENCODING
-from .exc import CompoundPiClientError
+from .exc import CompoundPiError
 
 
 def service(s):
@@ -256,6 +256,22 @@ class CompoundPiProgress(object):
         self.count = 0
         self.output = None
 
+class SilentCompoundPiProgress(object):
+    def __init__(self, stdout):
+        self.stdout = stdout
+        self.count = 0
+
+    def start(self, count):
+        self.count = count
+        self.stdout.write('Starting {} commands\n'.format(count).encode(ENCODING))
+
+    def update(self, count):
+        pass
+
+    def finish(self):
+        self.count = 0
+        self.output = None
+        self.stdout.write('Done\n'.encode(ENCODING))
 
 class CompoundPiCmd(Cmd):
     prompt = 'cpi> '
@@ -266,7 +282,8 @@ class CompoundPiCmd(Cmd):
         self.pprint(
             'Type "help" for more information, '
             'or "find" to locate Pi servers')
-        self.client = CompoundPiClient(CompoundPiProgress(self.stdout))
+#        self.client = CompoundPiClient(CompoundPiProgress(self.stdout))
+        self.client = CompoundPiClient(SilentCompoundPiProgress(self.stdout))
         self.capture_delay = 0.0
         self.capture_count = 1
         self.capture_quality = 85
@@ -299,8 +316,8 @@ class CompoundPiCmd(Cmd):
         # Don't crash'n'burn for standard client errors
         try:
             return Cmd.onecmd(self, line)
-        except CompoundPiClientError as exc:
-            self.pprint(str(exc) + '\n')
+        except CompoundPiError as exc:
+            self.stdout.write((str(exc) + '\n').encode(ENCODING))
 
     def parse_address(self, s):
         try:
@@ -711,7 +728,9 @@ class CompoundPiCmd(Cmd):
 
         cpi> status
         """
-        responses = self.client.status(self.parse_addresses(arg))
+        all_responses = self.client.status(self.parse_addresses(arg))
+        invalid_responses = {address: response for address, response in all_responses.items() if isinstance(response, CompoundPiErrorValue)}
+        responses = {address: response for address, response in all_responses.items() if not isinstance(response, CompoundPiErrorValue)}
         min_time = min(status.timestamp for status in responses.values())
         self.pprint_table(
             [
@@ -762,6 +781,8 @@ class CompoundPiCmd(Cmd):
                 if address in responses
                 for status in (responses[address],)
                 ])
+        if invalid_responses:
+            logging.warning('{} invalid responses:\n{}'.format(len(invalid_responses), '\n'.join([str(e) for e in invalid_responses.values()])))
         if len(set(
                 status.resolution
                 for status in responses.values()
@@ -1597,6 +1618,9 @@ class CompoundPiCmd(Cmd):
         """
         responses = self.client.list(self.parse_addresses(arg))
         for (address, files) in responses.items():
+            if isinstance(files, CompoundPiErrorValue):
+                logging.warning('Skipping {}'.format(files))
+                continue
             for f in files:
                 filename = '{ts:%Y%m%d-%H%M%S%f}-{addr}.{ext}'.format(
                         ts=f.timestamp, addr=address, ext={
@@ -1605,11 +1629,15 @@ class CompoundPiCmd(Cmd):
                             'MOTION': 'motion',
                             }[f.filetype])
                 with io.open(os.path.join(self.output, filename), 'wb') as output:
-                    self.client.download(address, f.index, output)
-                    if output.tell() != f.size:
-                        raise CmdError('Wrong size for file %s' % filename)
+                    try:
+                        # TODO: capture errors
+                        self.client.download(address, f.index, output)
+                        if output.tell() != f.size:
+                            raise CmdError('Wrong size for file %s' % filename)
+                    except Exception as e:
+                        logging.warning(str(e))
                 logging.info('Downloaded %s' % filename)
-        self.client.clear(self.parse_addresses(arg))
+            self.client.clear([address])
 
     def complete_download(self, text, line, start, finish):
         return self.complete_server(text, line, start, finish)

@@ -186,9 +186,9 @@ class CompoundPiRedefinedServer(CompoundPiClientError):
 class CompoundPiInvalidResponse(CompoundPiServerError):
     "Exception raised when a server returns an unexpected response"
 
-    def __init__(self, address):
+    def __init__(self, address, msg=None):
         super(CompoundPiInvalidResponse, self).__init__(
-                address, 'invalid response')
+                address, 'invalid response {}'.format(msg))
 
 
 class CompoundPiMissingResponse(CompoundPiServerError):
