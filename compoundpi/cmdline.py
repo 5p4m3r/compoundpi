@@ -50,11 +50,15 @@ base class. The extra facilities provided are:
 import os
 import re
 import cmd
-import readline
 import locale
 import logging
 import warnings
 from textwrap import TextWrapper
+
+try:
+  import readline
+except ImportError:
+  import pyreadline as readline
 
 from .terminal import _CONSOLE
 
@@ -269,6 +273,7 @@ class Cmd(cmd.Cmd):
             self._wrapper.width = self.width
             self._wrapper.initial_indent = initial_indent
             self._wrapper.subsequent_indent = subsequent_indent
+            self._wrapper.replace_whitespace = False
             s = self._wrapper.fill(s)
         return s + suffix
 

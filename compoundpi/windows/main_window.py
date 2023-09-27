@@ -36,7 +36,7 @@ from collections import defaultdict, OrderedDict
 import netifaces
 
 from . import get_icon, get_ui_file
-from ..client import CompoundPiClient
+from ..client import CompoundPiClient, CompoundPiErrorValue
 from ..qt import QtCore, QtGui, loadUi
 from .find_dialog import FindDialog
 from .configure_dialog import ConfigureDialog
@@ -240,9 +240,9 @@ The project homepage and documentation is at
                 self.settings.setValue('port', dialog.port)
                 self.settings.setValue('timeout', dialog.timeout)
                 self.settings.setValue('expected_count', dialog.expected_count)
-                self.client.network = '%s/%s' % (iface['addr'], iface['netmask'])
-                self.client.port = dialog.port
-                self.client.timeout = dialog.timeout
+                self.client.servers.network = '%s/%s' % (iface['addr'], iface['netmask'])
+                self.client.servers.port = dialog.port
+                self.client.servers.timeout = dialog.timeout
                 self.ui.server_list.model().find(count=dialog.expected_count)
                 self.servers_resize_columns()
         finally:
@@ -653,6 +653,7 @@ class ServersModel(QtCore.QAbstractTableModel):
         self.beginResetModel()
         try:
             self.parent.client.servers.find(count)
+            self.parent.client.servers.sort()
             self._data = self.parent.client.status()
         finally:
             self.endResetModel()
@@ -742,6 +743,18 @@ class ServersModel(QtCore.QAbstractTableModel):
         if index.isValid() and role == QtCore.Qt.DisplayRole:
             address = self.parent.client.servers[index.row()]
             status = self._data[address]
+            if isinstance(status, CompoundPiErrorValue):
+                return [
+                    str(address),
+                    '',  # Mode
+                    '',  # AGC
+                    '',  # AWB
+                    '',  # Exposure
+                    '',  # Metering
+                    '',  # Flip
+                    '',  # Time
+                    '',  # Images
+                ]
             return [
                 str(address),
                 '%dx%d@%sfps' % (

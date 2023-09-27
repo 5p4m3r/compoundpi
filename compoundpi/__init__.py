@@ -58,6 +58,9 @@ if sys.version_info[:2] == (3, 2):
         'MarkupSafe<0.16',
         ])
 
+if sys.platform.startswith('Win'):
+    __requires__.append('pyreadline')
+
 __classifiers__ = [
     'Development Status :: 4 - Beta',
     'Environment :: Console',
